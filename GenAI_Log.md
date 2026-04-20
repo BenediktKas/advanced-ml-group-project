@@ -1,10 +1,10 @@
 # GenAI Transparency Log
 
 ## Project Information
-- **Project Name:** [Your Project Name]
-- **Repository:** [GitHub Repo URL]
-- **Period:** [Start Date] – [End Date]
-- **Team Members:** [Name 1], [Name 2], [Name 3]
+- **Project Name:** German Freelancer Contract Analyzer
+- **Repository:** https://github.com/BenediktKas/advanced-ml-group-project
+- **Period:** 2025/2026 T4
+- **Team Members:** 70170, 70365, 73630, 52011
 
 ---
 
@@ -20,15 +20,15 @@
 ## Detailed Entries
 
 ### Entry #001
-- **Date:** 2026-04-10
-- **Author:** [Name]
-- **Tool:** Claude Sonnet (claude.ai)
-- **Phase:** Ideation
+- **Date:** 
+- **Author:** 
+- **Tool:** 
+- **Phase:** Ideation / Research / Planning / Coding / Writing / Review
 - **Prompt used:**
-  > "Your prompt here"
+  > 
 - **Output used:** Yes / Partially / No
-- **Modifications made:** Describe what you changed
-- **Reason for using AI:** Why did you use AI here?
+- **Modifications made:** 
+- **Reason for using AI:** 
 
 ---
 
