@@ -20,15 +20,33 @@ async def process_contract(file_path: str) -> ContractExtraction:
     text = ""
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
-            text += page.extract_text() + "\n"
-    
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+
+    text = text.strip()
+    if not text:
+        raise ValueError("Could not extract text from PDF — scanned documents are not supported yet.")
+
+    system_prompt = """You are an expert legal AI assistant specialized in analyzing German freelancer contracts.
+Your task is to extract structured data from the provided contract text according to the schema.
+
+Strict Extraction Rules:
+- clauses: Split the contract into individual clauses. Extract all clause-level provisions VERBATIM (do not paraphrase). There should be one meaningful legal provision per item in the list. This is critical for downstream vector search.
+- hourly_rate_eur: Extract the hourly rate and return it as a float in EUR.
+- experience_level: Normalize the freelancer's experience level to exactly one of the following: "junior", "mid", or "senior".
+- region: Infer the region from city or state mentions. If no region can be inferred, leave it null.
+- skill_category: Extract the primary skill category of the freelancer.
+- payment_terms_days: Extract the payment terms (in days) as an integer.
+"""
+
     # 2. Structured Extraction (using GPT-4o-mini for cost-efficiency)
     # per architecture recommendation [cite: 262]
     response = await client.beta.chat.completions.parse(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "Extract German freelancer contract terms into JSON."},
-            {"role": "user", "content": text}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please extract the contract terms from the following text. IMPORTANT: You must extract all clause-level provisions VERBATIM (not paraphrased) so that downstream vector search over the playbook works correctly.\n\n{text}"}
         ],
         response_format=ContractExtraction,
     )
