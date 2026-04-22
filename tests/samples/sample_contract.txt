@@ -1,0 +1,28 @@
+VERTRAG ÜBER FREIE MITARBEIT
+
+Zwischen
+Company GmbH, Musterstraße 1, 10115 Berlin (nachfolgend "Auftraggeber")
+und
+Max Mustermann, Beispielweg 2, 80331 München (nachfolgend "Auftragnehmer")
+wird folgender Vertrag geschlossen:
+
+§ 1 Vertragsgegenstand
+Der Auftragnehmer erbringt für den Auftraggeber Beratungsleistungen im Bereich Softwareentwicklung.
+
+§ 2 Vergütung
+Der Auftragnehmer erhält ein Stundenhonorar von 80,00 EUR (netto). Die Abrechnung erfolgt monatlich. Das Zahlungsziel beträgt 30 Tage netto nach Rechnungseingang.
+
+§ 3 Vertragsdauer und Kündigung
+Der Vertrag beginnt am 01.01.2025 und ist auf unbestimmte Zeit geschlossen. Die Kündigungsfrist beträgt 30 Tage zum Monatsende.
+
+§ 4 Nutzungsrechte
+Der Auftragnehmer räumt dem Auftraggeber räumlich, zeitlich und inhaltlich unbeschränkte Nutzungsrechte an allen Arbeitsergebnissen ein. Die Vergütung hierfür ist im Stundenhonorar enthalten.
+
+§ 5 Haftung
+Die Haftung des Auftragnehmers wird auf einen Maximalbetrag von 10.000 EUR pro Jahr beschränkt, ausgenommen bei Vorsatz und grober Fahrlässigkeit.
+
+§ 6 Wettbewerbsverbot
+Der Auftragnehmer verpflichtet sich, für die Dauer von 12 Monaten nach Beendigung dieses Vertrages nicht für direkte Wettbewerber des Auftraggebers in Deutschland tätig zu werden.
+
+§ 7 Schlussbestimmungen
+Es gilt deutsches Recht. Gerichtsstand ist München.

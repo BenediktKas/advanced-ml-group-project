@@ -1,0 +1,12 @@
+# Normalize all text files to LF on checkin; let Git decide on checkout per-platform.
+* text=auto eol=lf
+
+# Explicit binary types so Git doesn't try to diff or normalize them.
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.pptx binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
