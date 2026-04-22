@@ -1,0 +1,16 @@
+# Web & API
+fastapi
+uvicorn[standard]
+streamlit
+requests
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+pgvector
+
+# AI & Processing
+openai
+pdfplumber
+python-dotenv
+pydantic
