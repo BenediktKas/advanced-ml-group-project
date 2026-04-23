@@ -1,4 +1,9 @@
+import os
+
+import requests
 import streamlit as st
+
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="Contract Analyzer — German Freelance",
@@ -178,8 +183,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── DATA ──────────────────────────────────────────────────────────────────────
-FINDINGS = [
+DEMO_FINDINGS = [
     {
         "risk": "high",
         "title": "Hourly rate 24% below market median",
@@ -244,6 +248,27 @@ FINDINGS = [
 RISK_TAG   = {"high": "risk-high",   "medium": "risk-medium",   "low": "risk-low"}
 RISK_LABEL = {"high": "High",        "medium": "Medium",        "low": "Acceptable"}
 
+
+def _analyze(pdf_bytes: bytes, filename: str) -> dict | None:
+    """POST the PDF to the backend and return the parsed AnalysisReport dict."""
+    try:
+        resp = requests.post(
+            f"{API_URL}/analyze",
+            files={"file": (filename, pdf_bytes, "application/pdf")},
+            timeout=120,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        st.error(f"Analysis failed ({resp.status_code}): {resp.json().get('detail', resp.text)}")
+    except requests.exceptions.ConnectionError:
+        st.error(
+            f"Could not reach the backend at **{API_URL}**. "
+            "Make sure the FastAPI server is running (`uvicorn app.main:app --reload`)."
+        )
+    except requests.exceptions.Timeout:
+        st.error("The analysis took too long. Try a shorter contract or check the server.")
+    return None
+
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown('<div class="wordmark">Nova SBE · Advanced ML</div>', unsafe_allow_html=True)
 st.markdown('<h1 class="page-title">Freelance Contract Analyzer</h1>', unsafe_allow_html=True)
@@ -270,15 +295,33 @@ show_results = uploaded_file or demo_mode
 
 # ── RESULTS ───────────────────────────────────────────────────────────────────
 if show_results:
-    if demo_mode and not uploaded_file:
+    # Resolve findings — real API call or demo fallback
+    if uploaded_file and not demo_mode:
+        with st.spinner("Analyzing contract…"):
+            report = _analyze(uploaded_file.getvalue(), uploaded_file.name)
+        if report is None:
+            st.stop()
+        findings = report["findings"]
+        profile  = report.get("profile", "")
+        brief    = report.get("brief", "")
+    else:
         st.caption("Sample contract: Senior Python Developer, Munich (DE-BY) — for demonstration only.")
+        findings = DEMO_FINDINGS
+        profile  = "Senior Python Developer · Munich (DE-BY)"
+        brief    = None  # static HTML brief shown below
 
     st.markdown('<hr class="light">', unsafe_allow_html=True)
 
+    if profile:
+        st.markdown(
+            f'<div class="section-label">{profile}</div>',
+            unsafe_allow_html=True,
+        )
+
     # Summary counts
-    high_n   = sum(1 for f in FINDINGS if f["risk"] == "high")
-    medium_n = sum(1 for f in FINDINGS if f["risk"] == "medium")
-    low_n    = sum(1 for f in FINDINGS if f["risk"] == "low")
+    high_n   = sum(1 for f in findings if f["risk"] == "high")
+    medium_n = sum(1 for f in findings if f["risk"] == "medium")
+    low_n    = sum(1 for f in findings if f["risk"] == "low")
 
     st.markdown('<div class="section-label">Summary</div>', unsafe_allow_html=True)
     st.markdown(
@@ -297,7 +340,7 @@ if show_results:
                 <div class="summary-desc">Acceptable</div>
             </div>
             <div class="summary-item">
-                <div class="summary-num">{len(FINDINGS)}</div>
+                <div class="summary-num">{len(findings)}</div>
                 <div class="summary-desc">Clauses reviewed</div>
             </div>
         </div>
@@ -308,7 +351,7 @@ if show_results:
     # Findings
     st.markdown('<div class="section-label">Findings</div>', unsafe_allow_html=True)
 
-    for f in FINDINGS:
+    for f in findings:
         tag   = RISK_TAG[f["risk"]]
         label = RISK_LABEL[f["risk"]]
 
@@ -349,57 +392,72 @@ if show_results:
     st.markdown('<div class="section-label">Negotiation Brief</div>', unsafe_allow_html=True)
 
     with st.expander("View full brief"):
-        st.markdown(
-            """
-            <div class="brief-box">
-            <strong>Contract:</strong> Sample_Freelance_Agreement_v2.pdf<br>
-            <strong>Profile:</strong> Senior Python Developer · Munich (DE-BY)<br>
-            <strong>Date:</strong> 21 April 2026<br><br>
+        if brief:
+            # Real brief from the backend — plain text, render in the styled box
+            brief_html = brief.replace("\n", "<br>")
+            st.markdown(
+                f'<div class="brief-box">{brief_html}</div>',
+                unsafe_allow_html=True,
+            )
+            st.download_button(
+                "Download brief",
+                data=brief,
+                file_name="negotiation_brief.txt",
+                mime="text/plain",
+            )
+        else:
+            # Demo fallback
+            st.markdown(
+                """
+                <div class="brief-box">
+                <strong>Contract:</strong> Sample_Freelance_Agreement_v2.pdf<br>
+                <strong>Profile:</strong> Senior Python Developer · Munich (DE-BY)<br>
+                <strong>Date:</strong> 21 April 2026<br><br>
 
-            <strong>Priority actions</strong><br><br>
+                <strong>Priority actions</strong><br><br>
 
-            1. <strong>Hourly rate (high priority).</strong>
-            The offered rate of €72/h is below the 25th-percentile benchmark.
-            Open at €105/h (market median) and set a floor of €84/h.
-            Reference: Freelancer-Kompass 2025.<br><br>
+                1. <strong>Hourly rate (high priority).</strong>
+                The offered rate of €72/h is below the 25th-percentile benchmark.
+                Open at €105/h (market median) and set a floor of €84/h.
+                Reference: Freelancer-Kompass 2025.<br><br>
 
-            2. <strong>Late-payment interest (medium priority).</strong>
-            Replace the 4% figure with a reference to the statutory rate under
-            §288 Abs. 2 BGB. No numerical rate should appear in the contract.<br><br>
+                2. <strong>Late-payment interest (medium priority).</strong>
+                Replace the 4% figure with a reference to the statutory rate under
+                §288 Abs. 2 BGB. No numerical rate should appear in the contract.<br><br>
 
-            3. <strong>Payment term (medium priority).</strong>
-            Propose 14 days net; fall back to 21 days if necessary.
-            The current 45-day term is atypical for the sector (VGSD Survey 2024).<br><br>
+                3. <strong>Payment term (medium priority).</strong>
+                Propose 14 days net; fall back to 21 days if necessary.
+                The current 45-day term is atypical for the sector (VGSD Survey 2024).<br><br>
 
-            <strong>No action required</strong><br><br>
+                <strong>No action required</strong><br><br>
 
-            IP assignment clause is within standard scope.
-            Pre-existing tools and background IP are unaffected.<br><br>
+                IP assignment clause is within standard scope.
+                Pre-existing tools and background IP are unaffected.<br><br>
 
-            <em style="color:#9ca3af;font-size:0.8rem;">
-            For informational purposes only. This analysis does not constitute legal advice.
-            </em>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.download_button(
-            "Download brief",
-            data=(
-                "Freelance Contract Analysis\n"
-                "Sample_Freelance_Agreement_v2.pdf · 21 April 2026\n\n"
-                "1. Hourly rate — high priority\n"
-                "   Offered: €72/h. Market median: €95/h (Freelancer-Kompass 2025).\n"
-                "   Negotiate to at least €84/h (25th percentile).\n\n"
-                "2. Late-payment interest — medium priority\n"
-                "   Replace 4% with statutory reference (§288 Abs. 2 BGB, ~12.1%).\n\n"
-                "3. Payment term — medium priority\n"
-                "   Propose 14 days net; fallback 21 days.\n\n"
-                "4. IP assignment — acceptable, no action required.\n"
-            ),
-            file_name="negotiation_brief.txt",
-            mime="text/plain",
-        )
+                <em style="color:#9ca3af;font-size:0.8rem;">
+                For informational purposes only. This analysis does not constitute legal advice.
+                </em>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.download_button(
+                "Download brief",
+                data=(
+                    "Freelance Contract Analysis\n"
+                    "Sample_Freelance_Agreement_v2.pdf · 21 April 2026\n\n"
+                    "1. Hourly rate — high priority\n"
+                    "   Offered: €72/h. Market median: €95/h (Freelancer-Kompass 2025).\n"
+                    "   Negotiate to at least €84/h (25th percentile).\n\n"
+                    "2. Late-payment interest — medium priority\n"
+                    "   Replace 4% with statutory reference (§288 Abs. 2 BGB, ~12.1%).\n\n"
+                    "3. Payment term — medium priority\n"
+                    "   Propose 14 days net; fallback 21 days.\n\n"
+                    "4. IP assignment — acceptable, no action required.\n"
+                ),
+                file_name="negotiation_brief.txt",
+                mime="text/plain",
+            )
 
     st.markdown(
         '<div class="footer">Contract Analyzer · Nova SBE Advanced ML Capstone · '
