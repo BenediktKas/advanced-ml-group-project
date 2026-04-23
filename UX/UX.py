@@ -373,16 +373,16 @@ if show_results:
 
         st.markdown(
             f"""
-            <div class="finding">
-                <div class="finding-header">
-                    <span class="finding-title">{f['title']}</span>
-                    <span class="risk-tag {tag}">{label}</span>
-                </div>
-                <div class="clause-text">{f['clause']}</div>
-                <div class="finding-body">{f['body']}</div>
-                {redline_html}
-                {meta_html}
-            </div>
+<div class="finding">
+<div class="finding-header">
+<span class="finding-title">{f['title']}</span>
+<span class="risk-tag {tag}">{label}</span>
+</div>
+<div class="clause-text">{f['clause']}</div>
+<div class="finding-body">{f['body']}</div>
+{redline_html}
+{meta_html}
+</div>
             """,
             unsafe_allow_html=True,
         )
