@@ -1,9 +1,16 @@
 # app/main.py
 import os
 import shutil
+import tempfile
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, UploadFile
+
+# Load .env BEFORE importing app.services / db modules. Several of them
+# instantiate AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")) at import
+# time, so the key must already be in the environment by then.
+load_dotenv()
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -11,8 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.services.ingestion import process_contract
 from app.services.clause_analyzer import analyze as analyze_clauses
 from app.services.report_builder import build as build_report
-
-load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -46,12 +51,21 @@ async def analyze_contract(
     2. Analyze - per-clause risk analysis against playbook, statutes, rates.
     3. Report  - summary counts, findings list, negotiation brief.
     """
-    temp_path = f"temp_{file.filename}"
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Use a NamedTemporaryFile so concurrent uploads never collide on the
+    # same path and a malicious `file.filename` (e.g. "../../etc/passwd")
+    # can't escape the working directory.
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        temp_path = tmp.name
 
     try:
-        extraction = await process_contract(temp_path)
+        try:
+            extraction = await process_contract(temp_path)
+        except ValueError as e:
+            # Scanned / unreadable PDFs raise ValueError in ingestion.
+            # Return a 400 so the client gets a clean error instead of a 500.
+            raise HTTPException(status_code=400, detail=str(e))
+
         findings = await analyze_clauses(extraction, db)
         report = build_report(extraction, findings)
         return report

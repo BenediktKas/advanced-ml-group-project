@@ -3,6 +3,7 @@ fastapi
 uvicorn[standard]
 streamlit
 requests
+python-multipart  # required by FastAPI for UploadFile / File(...)
 
 # Database
 sqlalchemy[asyncio]

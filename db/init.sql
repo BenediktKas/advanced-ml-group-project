@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS statute_references (
     clause_type TEXT NOT NULL,
     paragraph TEXT NOT NULL,
     text_excerpt TEXT NOT NULL,
-    official_url TEXT
+    official_url TEXT,
+    UNIQUE (clause_type, paragraph)
 );
 
 -- 3. LAYER 2: VECTOR TABLE (THE PLAYBOOK) [cite: 170]
@@ -46,6 +47,9 @@ CREATE TABLE IF NOT EXISTS playbook (
 
 -- 4. LAYER 3: SESSION STORE (TRANSIENT DATA) [cite: 204]
 -- Holds temporary analysis results keyed by session ID [cite: 206]
+-- NOTE: Reserved schema — no application code currently reads or writes this
+-- table. Kept in place so UI/session persistence can be wired up without a
+-- follow-up migration. Drop if not used before v1.
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMPTZ DEFAULT now(),
@@ -108,11 +112,47 @@ VALUES (
 -- Liability (High Risk)
 INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
 VALUES (
-    'PB-005', 
-    'liability', 
-    'high', 
-    'Contract specifies unlimited liability for simple negligence.', 
-    'Under German B2B standard terms (§307 BGB), unlimited liability for simple negligence is often invalid. Liability should be capped at contract value or insurance coverage.', 
-    'Die Haftung für einfache Fahrlässigkeit wird auf die Deckungssumme der Berufshaftpflichtversicherung des Auftragnehmers begrenzt.', 
+    'PB-005',
+    'liability',
+    'high',
+    'Contract specifies unlimited liability for simple negligence.',
+    'Under German B2B standard terms (§307 BGB), unlimited liability for simple negligence is often invalid. Liability should be capped at contract value or insurance coverage.',
+    'Die Haftung für einfache Fahrlässigkeit wird auf die Deckungssumme der Berufshaftpflichtversicherung des Auftragnehmers begrenzt.',
     '§307 BGB'
 ) ON CONFLICT (id) DO NOTHING;
+
+-- 6. STATUTE REFERENCES (Layer 1 grounding for clause_analyzer)
+-- clause_type values must match those produced by the playbook / LLM.
+INSERT INTO statute_references (clause_type, paragraph, text_excerpt, official_url)
+VALUES
+    (
+        'late_payment_interest',
+        '§288 Abs. 2 BGB',
+        'Bei Rechtsgeschäften, an denen ein Verbraucher nicht beteiligt ist, beträgt der Zinssatz für Entgeltforderungen neun Prozentpunkte über dem Basiszinssatz.',
+        'https://www.gesetze-im-internet.de/bgb/__288.html'
+    ),
+    (
+        'payment_terms',
+        '§271a BGB',
+        'Eine Vereinbarung, nach der der Gläubiger einer Entgeltforderung die Erfüllung erst nach mehr als 60 Tagen nach Empfang der Gegenleistung verlangen kann, ist nur wirksam, wenn sie ausdrücklich getroffen und im Hinblick auf die Belange des Gläubigers nicht grob unbillig ist.',
+        'https://www.gesetze-im-internet.de/bgb/__271a.html'
+    ),
+    (
+        'scheinselbstständigkeit',
+        '§7 Abs. 1 SGB IV',
+        'Beschäftigung ist die nichtselbständige Arbeit, insbesondere in einem Arbeitsverhältnis. Anhaltspunkte für eine Beschäftigung sind eine Tätigkeit nach Weisungen und eine Eingliederung in die Arbeitsorganisation des Weisungsgebers.',
+        'https://www.gesetze-im-internet.de/sgb_4/__7.html'
+    ),
+    (
+        'intellectual_property',
+        '§31 UrhG',
+        'Der Urheber kann einem anderen das Recht einräumen, das Werk auf einzelne oder alle Nutzungsarten zu nutzen (Nutzungsrecht). Das Nutzungsrecht kann als einfaches oder ausschließliches Recht sowie räumlich, zeitlich oder inhaltlich beschränkt eingeräumt werden.',
+        'https://www.gesetze-im-internet.de/urhg/__31.html'
+    ),
+    (
+        'liability',
+        '§307 Abs. 1 BGB',
+        'Bestimmungen in Allgemeinen Geschäftsbedingungen sind unwirksam, wenn sie den Vertragspartner des Verwenders entgegen den Geboten von Treu und Glauben unangemessen benachteiligen.',
+        'https://www.gesetze-im-internet.de/bgb/__307.html'
+    )
+ON CONFLICT (clause_type, paragraph) DO NOTHING;
