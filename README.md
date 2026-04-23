@@ -1,10 +1,6 @@
 # German Freelancer Contract Analyzer
 
-<<<<<<< HEAD
-=======
-A proof-of-concept AI analytical pipeline developed for the Nova SBE Advanced ML Capstone. The project leverages LLMs and vector similarity search to examine German freelance agreements against legal statutes (*e.g., Scheinselbstständigkeit, liability caps, BGB standards*) and market rate benchmarks.
 
->>>>>>> 3b4517c (docs: add complete setup and running instructions)
 ## Setup Instructions
 
 These instructions cover setting up the environment, PostgreSQL database, and Python services natively on your local machine (macOS/Linux).
