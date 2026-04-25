@@ -12,6 +12,101 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 _EXPERIENCE_LEVELS = ("junior", "mid", "senior")
 
+# Canonical English skill categories actually present in `rate_benchmarks`
+# (see db/seed_rates.sql). Anything else the LLM emits should be funneled
+# into one of these via _normalize_skill_category, otherwise the lookup
+# silently misses and clause_analyzer cannot raise a "rate below p25"
+# finding.
+CANONICAL_SKILL_CATEGORIES = (
+    "Consulting & Management",
+    "SAP Consulting",
+    "IT Infrastructure",
+    "Engineering",
+    "Software Development",
+    "Marketing & Communications",
+    "Design & Content",
+    "Other",
+)
+
+# Order matters: more specific matches must come first. SAP and
+# IT-Infrastructure keywords are checked BEFORE the generic
+# "Software Development" / "Engineering" buckets so that, e.g.,
+# "SAP ABAP developer" lands in SAP Consulting rather than
+# Software Development, and "DevOps engineer" lands in
+# IT Infrastructure rather than Engineering. Non-software
+# Engineering keywords are checked BEFORE Software Development
+# so "Mechanical engineer" doesn't get caught by the generic
+# "engineer" keyword.
+_SKILL_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
+    ("SAP Consulting", (
+        "sap", "abap", "s/4hana", "s4hana", "fiori", "hana",
+    )),
+    ("IT Infrastructure", (
+        "devops", "sre", "site reliability", "infrastructure", "infrastruktur",
+        "cloud", "aws", "azure", "gcp", "kubernetes", "k8s", "docker",
+        "network", "netzwerk", "system administrator", "sysadmin",
+        "security", "sicherheit", "cybersecurity", "it-security",
+        "datenbank", "database admin", "dba", "platform",
+    )),
+    ("Engineering", (  # non-software engineering — checked BEFORE Software Development
+        "ingenieur", "mechanical", "maschinenbau", "elektrotechnik",
+        "electrical engineer", "civil", "bauingenieur", "chemical",
+        "verfahrenstechnik", "automotive", "automobil", "luft- und raumfahrt",
+        "aerospace", "process engineer",
+    )),
+    ("Software Development", (
+        "software", "developer", "entwickl", "programmier", "engineer",
+        "frontend", "backend", "full stack", "fullstack", "full-stack",
+        "java", "python", "javascript", "typescript", "react", "angular",
+        "vue", "node", "rust", "golang", "go developer", ".net", "c#", "c++",
+        "mobile", "ios", "android", "data engineer", "ml engineer",
+        "machine learning", "data scientist", "ki-",
+    )),
+    ("Consulting & Management", (
+        "consult", "berat", "manage", "projekt", "project manager", "pmo",
+        "scrum", "agile coach", "product owner", "business analyst",
+        "strategy", "strategie", "transformation", "change",
+    )),
+    ("Design & Content", (
+        "design", "ux", "ui", "grafik", "graphic", "content", "redakteur",
+        "redaktion", "copywriter", "texter", "video", "fotograf",
+        "photograph", "illustrator",
+    )),
+    ("Marketing & Communications", (
+        "marketing", "kommunikation", "communications", "pr ", "public relation",
+        "social media", "seo", "sea", "performance", "brand", "campaign",
+        "kampagne", "werbung", "advertising",
+    )),
+]
+
+
+def _normalize_skill_category(raw: Optional[str]) -> str:
+    """Map a free-text skill label onto a canonical `skill_category`.
+
+    The ingestion LLM (gpt-4o-mini) returns whatever phrase best fits
+    the contract — German or English, narrow or broad. The seeded
+    `rate_benchmarks` table only stores 8 English buckets, so we need
+    a deterministic bridge between the two. Substring matching is
+    case-insensitive and order-sensitive (see _SKILL_KEYWORDS).
+
+    Returns "Other" as a safe fallback so the SQL lookup always has
+    something to bind to. "Other" is itself a valid seeded bucket and
+    its rates approximate the cross-category median.
+    """
+    if not raw:
+        return "Other"
+
+    # Direct hit (LLM already returned a canonical label)
+    for canonical in CANONICAL_SKILL_CATEGORIES:
+        if raw.strip().lower() == canonical.lower():
+            return canonical
+
+    r = raw.lower()
+    for canonical, keywords in _SKILL_KEYWORDS:
+        if any(kw in r for kw in keywords):
+            return canonical
+    return "Other"
+
 
 class RateBenchmark(BaseModel):
     skill_category: str
@@ -51,7 +146,9 @@ async def lookup(
     if exp is None:
         return None
 
-    params = {"skill": skill_category, "exp": exp}
+    # Bridge free-text LLM output → canonical seeded bucket
+    canonical_skill = _normalize_skill_category(skill_category)
+    params = {"skill": canonical_skill, "exp": exp}
 
     if region:
         q = text(

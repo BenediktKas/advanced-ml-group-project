@@ -22,6 +22,7 @@
 | 008 | 2026-04-23 | Team | Claude / ChatGPT | Coding | Partially |
 | 009 | 2026-04-23 | Team | Claude / ChatGPT | Writing | Partially |
 | 010 | 2026-04-24 | 70170 | Claude (Cowork) | Review | Yes |
+| 011 | 2026-04-25 | 70170 | Claude (Cowork) | Coding / Data prep | Yes |
 
 ---
 
@@ -157,6 +158,22 @@
 
 ---
 
+### Entry #011 — Rate Benchmark Seeding from Freelancer-Kompass 2025
+- **Date:** 2026-04-25
+- **Author:** 70170
+- **Tool:** Claude (Anthropic Cowork, desktop app)
+- **Phase:** Coding / Data prep
+- **Prompt used:**
+  > Read the Freelancer-Kompass 2025 PDF (page 34, "Stundensatz nach Fachgebiet"). Extract the eight skill-category medians. Produce `db/seed_rates.sql` that seeds the `rate_benchmarks` table with 24 rows (8 categories × 3 experience tiers junior/mid/senior). Use English skill_category labels. Derive p25/p75 transparently and document the methodology in README.md. Also add a `_normalize_skill_category()` function to `db/rate_lookup.py` that maps free-text LLM output (German or English, narrow or broad) onto the canonical English buckets, with order-sensitive substring matching so e.g. "DevOps engineer" → IT Infrastructure, "Mechanical engineer" → Engineering, "SAP ABAP developer" → SAP Consulting.
+- **Output used:** Yes — three deliverables shipped:
+  1. **`db/seed_rates.sql`** — 24 INSERT rows wrapped in a transaction, idempotent via `DELETE ... WHERE source = 'Freelancer-Kompass 2025'`. The header documents the source, the raw medians, and the two-step derivation: experience multiplier of ±30 % on the category median (`junior × 0.70`, `senior × 1.30`) and within-tier dispersion of ±15 % (`p25 = tier × 0.85`, `p75 = tier × 1.15`).
+  2. **`db/rate_lookup.py`** — added `CANONICAL_SKILL_CATEGORIES`, the keyword table `_SKILL_KEYWORDS`, and `_normalize_skill_category()`. Wired into `lookup()` so all incoming free-text categories pass through the normalizer before the SQL bind. 22 unit-style cases verified against the function (covering DE+EN, edge cases like empty/None, and the disambiguation cases SAP-vs-Software-Development and Mechanical-vs-Software).
+  3. **`README.md`** — new step "3. Seed Rate Benchmarks" between env config and playbook seeding (renumbering existing step 3→4); new "## Methodology" section at end covering rate benchmark derivation (with DE↔EN translation table), rationale for the multipliers (broadly consistent with Eurostat SES patterns for ISCO-08 groups 21/25; conservative vs GULP p25/p75 spreads), region-NULL choice, and a "Deferred Enrichments" subsection enumerating what we deliberately did **not** seed (industry, education premium, service-type, year-over-year, gender split).
+- **Modifications made:** Reordered Engineering before Software Development in `_SKILL_KEYWORDS` after a unit-test failure showed "Mechanical engineer" was being caught by Software Development's generic "engineer" keyword. Added German "sicherheit" to IT Infrastructure keywords after "IT-Sicherheit Berater" was misclassified as Consulting & Management.
+- **Reason for using AI:** PDF extraction (vision over a 46-page report), generation of structured SQL with documented methodology, and authoring the keyword-disambiguation table are tasks AI tools handle efficiently. The team retained authority over all judgment calls — the choice of ±30 % / ±15 % multipliers, the decision to seed nationwide only, and the deferred-enrichments scope.
+
+---
+
 ## Notes & Reflections
 - AI tools (Claude, ChatGPT) were used throughout the project primarily for code scaffolding, boilerplate generation, and debugging assistance.
 - All AI-generated code was reviewed by at least one team member before committing. Prompts are reproduced above as accurately as possible from memory and git history.
@@ -166,4 +183,4 @@
 
 ---
 
-*Last updated: 2026-04-24 by 70170*
+*Last updated: 2026-04-25 by 70170*

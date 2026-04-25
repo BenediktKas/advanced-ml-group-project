@@ -45,7 +45,15 @@ The pipeline uses a local PostgreSQL database with the **pgvector** extension.
    - Copy `.env.example` to a new `.env` file.
    - Insert your real `OPENAI_API_KEY` (must support `text-embedding-3-small` and `gpt-4o-mini`).
 
-### 3. Seed the Playbook Vectors
+### 3. Seed Rate Benchmarks
+The "rate below market" risk flag relies on hourly-rate percentiles in the `rate_benchmarks` table. Seed them from the Freelancer-Kompass 2025 report:
+
+```bash
+psql -U postgres -d freelancer_analyzer -f db/seed_rates.sql
+```
+*This inserts 24 rows (8 skill categories × 3 experience tiers). The script is idempotent — re-running it replaces only rows where `source = 'Freelancer-Kompass 2025'`. See **Methodology → Rate Benchmarks** below for how p25/p75 are derived from the report's published medians.*
+
+### 4. Seed the Playbook Vectors
 The application compares contract clauses against a statutory embedded playbook relying on vector similarity. You must generate embeddings for the database:
 
 ```bash
@@ -79,3 +87,58 @@ streamlit run UX/UX.py
 
 ## Testing with Sample Data
 A mock contract exists under `tests/samples/sample.pdf` that triggers simulated risk warnings for hourly rates, IP, Scheinselbstständigkeit, and payment terms. Simply drop it into the running Streamlit upload box to see the pipeline end to end!
+
+---
+
+## Methodology
+
+The analyzer combines three knowledge layers (relational facts, embedded playbook, LLM synthesis). For the relational-facts layer the seed data is derived rather than copied verbatim from primary sources, so we document the derivation here.
+
+### Rate Benchmarks (`db/seed_rates.sql`)
+
+**Source.** *Freelancer-Kompass 2025*, freelancermap GmbH, Nuremberg — an annual survey of ~5,000 German freelancers. We use the field **"Stundensatz nach Fachgebiet"** (printed page 34), which reports a single median hourly rate per skill category in EUR/h.
+
+**Skill-category translation.** The Kompass uses German labels; the canonical `skill_category` values stored in the database are English so the LLM extraction layer (which we prompt in English) can hit them directly:
+
+| Kompass (DE)                          | Canonical (EN)                | Median (EUR/h) |
+|---------------------------------------|-------------------------------|----------------|
+| Beratung / Management                 | Consulting & Management       | 120            |
+| SAP-Beratung / -Entwicklung           | SAP Consulting                | 117            |
+| IT-Infrastruktur                      | IT Infrastructure             | 102            |
+| Ingenieurwesen                        | Engineering                   |  95            |
+| Softwareentwicklung                   | Software Development          |  94            |
+| Marketing / Kommunikation             | Marketing & Communications    |  92            |
+| Grafik / Content                      | Design & Content              |  82            |
+| Sonstige Bereiche                     | Other                         | 100            |
+
+**Free-text → canonical mapping.** Because GPT-4o-mini may emit any phrase ("Senior Java backend developer", "SAP ABAP-Berater", "Mechanical engineer"), `db/rate_lookup.py` ships a `_normalize_skill_category()` function that does case-insensitive substring matching against an order-sensitive keyword list (`_SKILL_KEYWORDS`). Order matters: SAP and IT-Infrastructure keywords are checked before generic engineering terms so, e.g., "DevOps engineer" lands in *IT Infrastructure* rather than *Software Development*. Unmatched inputs fall back to the `Other` bucket, which is itself seeded.
+
+**Experience tier multiplier (±30 % on category median).**
+* `junior  = median × 0.70`
+* `mid     = median × 1.00`
+* `senior  = median × 1.30`
+
+This range is broadly consistent with experience-premium patterns reported by Eurostat's *Structure of Earnings* statistics for ISCO-08 occupation groups 21 (science & engineering professionals) and 25 (ICT professionals) in Germany — senior practitioners typically earn ~25–35 % above the occupational mean and juniors ~25–30 % below. We pick the round 30 % figure as a transparent compromise.
+
+**Within-tier dispersion (±15 % around the tier point estimate).**
+* `p25    = tier × 0.85`
+* `median = tier × 1.00`
+* `p75    = tier × 1.15`
+
+Conservative relative to the GULP *Skills- und Stundensatzstudie* (which reports p25/p75 spreads of roughly ±20 % within a skill group). We deliberately err toward a tighter band so the "below p25" risk flag in `clause_analyzer` fires only on clearly under-priced contracts.
+
+**Region.** All seeded rows have `region IS NULL` (nationwide). The Kompass does publish a federal-state split, but per-state sample sizes are too small to be robust. The lookup function in `db/rate_lookup.py` falls back to nationwide when no region match exists, so this is harmless.
+
+### Playbook (`db/playbook` rows + `scripts/seed_vectors.py`)
+
+The current 5-row seed in `db/init.sql` (PB-001 through PB-005) covers the highest-frequency clause families: late-payment interest, payment-term ceiling, IP transfer scope, working-time direction (Scheinselbstständigkeit), and termination notice. Each rule cites its German statutory anchor (BGB §§ 271a, 288, 305-310; UrhG §§ 31, 32; SGB IV § 7) and is rendered into a vector via `text-embedding-3-small` by `scripts/seed_vectors.py`. Expansion to 60–100 entries is tracked separately and not covered here.
+
+### Deferred Enrichments
+
+The following dimensions exist in the underlying sources but are intentionally **not** seeded — they would expand the schema without buying accuracy on the analyses we currently produce:
+
+* Industry breakdowns (`Branche`)
+* Education premium (`Bildung`)
+* Service-type splits (`Leistung`)
+* Year-over-year deltas (the 2024 → 2025 +5–7 % trend)
+* Gender pay-gap dimension
