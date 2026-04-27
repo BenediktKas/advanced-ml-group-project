@@ -53,13 +53,21 @@ psql -U postgres -d freelancer_analyzer -f db/seed_rates.sql
 ```
 *This inserts 24 rows (8 skill categories × 3 experience tiers). The script is idempotent — re-running it replaces only rows where `source = 'Freelancer-Kompass 2025'`. See **Methodology → Rate Benchmarks** below for how p25/p75 are derived from the report's published medians.*
 
-### 4. Seed the Playbook Vectors
-The application compares contract clauses against a statutory embedded playbook relying on vector similarity. You must generate embeddings for the database:
+### 4. Seed the Playbook Entries
+The Layer 2 playbook contains the curated risky-clause patterns the analyzer matches contracts against. The current corpus is 66 entries spanning 15 clause categories (compensation, payment terms, IP, Scheinselbstständigkeit, termination, liability, AGB-Kontrolle, confidentiality, non-compete, acceptance, warranty, data protection, working time, dispute resolution, force majeure). Every entry carries a `statute_ref`, `source_url`, and `source_type` (statute / case / agency / template / custom) — the integrity gate expects all three to be non-empty.
+
+```bash
+psql -U postgres -d freelancer_analyzer -f db/seed_playbook.sql
+```
+*The script uses `ON CONFLICT (id) DO UPDATE`, so re-running propagates edits. The `embedding` column is reset to NULL only for rows whose semantic content actually changed, which means the next `seed_vectors.py` run re-embeds exactly the rows that need it.*
+
+### 5. Seed the Playbook Vectors
+The application compares contract clauses against the playbook via cosine similarity over OpenAI embeddings. You must generate the embeddings before the analyzer can match anything:
 
 ```bash
 python scripts/seed_vectors.py
 ```
-*Note: This will cost a few cents in OpenAI API credits as it generates vector embeddings for the rules.*
+*Re-runs only embed rows where `embedding IS NULL`. Pass `--force` to re-embed every row. Cost: a few cents per full reseed.*
 
 ---
 

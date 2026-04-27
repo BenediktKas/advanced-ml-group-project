@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS statute_references (
 
 -- 3. LAYER 2: VECTOR TABLE (THE PLAYBOOK) [cite: 170]
 -- Stores risky clause patterns, legal reasoning, and suggested redlines [cite: 171]
+-- Provenance fields (source_url, source_type) added 2026-04-27 to support the
+-- defensibility audit: every entry must trace to a primary German legal source.
 CREATE TABLE IF NOT EXISTS playbook (
     id TEXT PRIMARY KEY, -- e.g., 'PB-001'
     clause_type TEXT NOT NULL,
@@ -42,8 +44,15 @@ CREATE TABLE IF NOT EXISTS playbook (
     legal_reasoning TEXT NOT NULL,
     recommended_redline TEXT,
     statute_ref TEXT,
+    source_url TEXT,
+    source_type TEXT CHECK (source_type IN ('statute', 'case', 'agency', 'template', 'custom')),
     embedding vector(1536) -- Optimized for OpenAI text-embedding-3-small [cite: 191, 263]
 );
+
+-- Idempotent column additions for installs predating the 2026-04-27 schema bump.
+-- Safe to run repeatedly; no-op when columns already exist.
+ALTER TABLE playbook ADD COLUMN IF NOT EXISTS source_url TEXT;
+ALTER TABLE playbook ADD COLUMN IF NOT EXISTS source_type TEXT;
 
 -- 4. LAYER 3: SESSION STORE (TRANSIENT DATA) [cite: 204]
 -- Holds temporary analysis results keyed by session ID [cite: 206]
@@ -58,68 +67,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     is_active BOOLEAN DEFAULT true
 );
 
--- 5. INITIAL "GOLD" PLAYBOOK DATA [cite: 52, 200]
--- Expert-curated entries based on German statutory law [cite: 35]
-
--- Late Payment Interest (Medium Risk)
-INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
-VALUES (
-    'PB-001', 
-    'late_payment_interest', 
-    'medium', 
-    'Contract specifies a late-payment interest rate below the B2B statutory default.', 
-    '§288 Abs. 2 BGB sets the default statutory interest rate for B2B transactions at 9 percentage points above the base rate. Agreeing to a fixed lower rate (e.g., 4%) reduces legal entitlement.', 
-    'Bei Zahlungsverzug werden Verzugszinsen in gesetzlicher Höhe gemäß §288 Abs. 2 BGB berechnet.', 
-    '§288 Abs. 2 BGB'
-) ON CONFLICT (id) DO NOTHING;
-
--- Payment Terms (Medium Risk)
-INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
-VALUES (
-    'PB-002', 
-    'payment_terms', 
-    'medium', 
-    'Payment term exceeds 30 days without clear justification.', 
-    'Standard industry norms are 14–30 days. While §271a BGB allows up to 60 days in B2B, terms longer than 30 days impact liquidity.', 
-    'Invoices shall be settled within 14 calendar days of receipt.', 
-    '§271a BGB'
-) ON CONFLICT (id) DO NOTHING;
-
--- Disguised Employment / Scheinselbstständigkeit (High Risk)
-INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
-VALUES (
-    'PB-003', 
-    'scheinselbstständigkeit', 
-    'high', 
-    'Clause requires freelancer to follow daily instructions or work at fixed times.', 
-    'Subjecting a freelancer to instructions is a primary indicator of disguised employment under §7 SGB IV, posing social security risks.', 
-    'Der Auftragnehmer ist in der Ausgestaltung seiner Tätigkeit frei und unterliegt keinen Weisungen des Auftraggebers.', 
-    '§7 SGB IV'
-) ON CONFLICT (id) DO NOTHING;
-
--- IP Assignment (Medium Risk)
-INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
-VALUES (
-    'PB-004', 
-    'intellectual_property', 
-    'medium', 
-    'Contract transfers Background IP or tools developed prior to the project.', 
-    'Under UrhG, transferring pre-existing background IP without specific compensation is detrimental. Rights should be limited to project-specific foreground IP.', 
-    'The transfer of rights is limited to results created specifically under this agreement. Pre-existing tools and background IP remain the property of the freelancer.', 
-    '§31 UrhG'
-) ON CONFLICT (id) DO NOTHING;
-
--- Liability (High Risk)
-INSERT INTO playbook (id, clause_type, risk_level, pattern_description, legal_reasoning, recommended_redline, statute_ref)
-VALUES (
-    'PB-005',
-    'liability',
-    'high',
-    'Contract specifies unlimited liability for simple negligence.',
-    'Under German B2B standard terms (§307 BGB), unlimited liability for simple negligence is often invalid. Liability should be capped at contract value or insurance coverage.',
-    'Die Haftung für einfache Fahrlässigkeit wird auf die Deckungssumme der Berufshaftpflichtversicherung des Auftragnehmers begrenzt.',
-    '§307 BGB'
-) ON CONFLICT (id) DO NOTHING;
+-- 5. PLAYBOOK ENTRIES — moved to db/seed_playbook.sql (2026-04-27).
+-- Run `psql -U postgres -d freelancer_analyzer -f db/seed_playbook.sql`
+-- AFTER this script and BEFORE `python scripts/seed_vectors.py`.
+-- Keeping schema (this file) and curated legal data (seed_playbook.sql)
+-- in separate files mirrors the rate_benchmarks pattern (seed_rates.sql)
+-- and lets the playbook be reviewed / re-seeded without touching schema.
 
 -- 6. STATUTE REFERENCES (Layer 1 grounding for clause_analyzer)
 -- clause_type values must match those produced by the playbook / LLM.
